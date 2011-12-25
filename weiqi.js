@@ -1,11 +1,8 @@
 // WeiQi.js 0.1.1
 // (c) 2011 Huang Wei, imonyse@gmail.com
 
+// Minimum requirements: underscore.js, raphael.js 
 
-// TODO: what I really need for a sgf go player?
-// 1. Create on the fly. Can be created from the console, and attached to DOM.
-// 2. Control playing mode effortlessly.
-// 3. Easy debug, better testing.
 (function() {
   var root = this;
   
@@ -66,6 +63,21 @@
 
     root: function() {
       
+    },
+
+    getProperty: function(propident) {
+      var i = 0,
+          len = this._property.length,
+          p = null;
+      
+      for (i=0; i<len; i++) {
+	p = this._property[i];
+	if (p.name === propident) {
+	  return p.value;
+	}
+      }
+
+      return null;
     },
 
     addStone: function(color, movex, movey) {
@@ -176,8 +188,9 @@
    * ---------------------------------------------------------------- */
   var SGFTree;
   
-  SGFTree = function(sgf_text){
-    this.root = parse_sgf_text(sgf_text);
+  SGFTree = function(){
+    this.root = null;
+    this.lastnode = null;
   };
 
   _.extend(SGFTree.prototype, {
@@ -190,8 +203,19 @@
 
     },
 
+    // Forward one node in the tree.
     forward: function() {
-      
+      if (this.lastnode) {
+	if (this.lastnode._child) {
+	  this.lastnode = this.lastnode._child;
+	} else {
+	  return 0;
+	}
+      } else {
+	this.lastnode = this.root;
+      }
+
+      return 1;
     },
 
     addPlay: function(color, movex, movey) {
@@ -263,7 +287,7 @@
     }
   });
 
-  
+
   /* ----------------------------------------------------------------
    * @group SGFParser
    * ---------------------------------------------------------------- */
@@ -443,7 +467,7 @@
       }
 
       // head is parsed
-      var head = {_parent:null, _child:null},
+      var head = {},
           last,
           next;
 
@@ -458,7 +482,8 @@
 	this.match(')');
       }
 
-      return head;
+      // I know this is weird, but seems like a good way to solve the problem
+      return head._child;
     },
 
     fuseki: function(parent, mode, moves_per_game, i) {
@@ -487,5 +512,334 @@
       
     }
   });
+
+  /* ----------------------------------------------------------------
+   * @group GameInfo
+   * ---------------------------------------------------------------- */
+  GameInfo = function() {
+    this.handicap = 0;
+    this.komi = 5.5;
+    this.to_move = 1;
+    this.game_record = null;
+  };
+
+  _.extend(GameInfo.prototype, {
+    playSgftree: function(tree) {
+      // SGF Reference: http://www.red-bean.com/sgf/properties.html
+      var board_size,
+          next,
+          move = null,
+          action_table = {
+	    // Move Properties
+	    'B': function() {
+	      
+	    },
+	    'W': function() {
+	      
+	    },
+	    'KO': function() {
+	      // TODO: Don't know how it works, find some example ...
+	      // Execute a given move (B or W) even it's illegal. This is
+	      // an optional property, SGF viewers themselves should execute
+	      // ALL moves. It's purpose is to make it easier for other
+	      // applications (e.g. computer-players) to deal with illegal
+	      // moves. A KO property without a black or white move within
+	      // the same node is illegal.'
+	    },
+	    'MN': function() {
+	      // Sets the move number to the given value, i.e. a move
+	      // specified in this node has exactly this move-number. This
+	      // can be useful for variations or printing.
+	      
+	    },
+	    'IL': function() {
+	      // GNU Go extension, mark ko capture as illegal position
+	    },
+
+	    // Setup Properties
+	    'AB': function() {
+	      
+	    },
+	    'AW': function() {
+	      
+	    },
+	    'AE': function() {
+	      
+	    },
+	    'PL': function() {
+	      // PL tells whose turn it is to play. This can be used when
+	      // setting up positions or problems.
+	    },
+
+	    // Node Annotation Properties
+	    'C': function() {
+	      
+	    },
+	    'DM': function() {
+	      // The position is even. SGF viewers should display a
+	      // message. This property may indicate main variations in
+	      // opening libraries (joseki) too. Thus DM[2] indicates an
+	      // even result for both players and that this is a main
+	      // variation of this joseki/opening.
+	      // This property must not be mixed with UC, GB or GW
+	      // within a node.
+	    },
+	    'GB': function() {
+	      // Something good for black. SGF viewers should display a
+	      // message. The property is not related to any specific place
+	      // on the board, but marks the whole node instead.
+	      // GB must not be mixed with GW, DM or UC within a node.
+	    },
+	    'GW': function() {
+	      
+	    },
+	    'HO': function() {
+	      // Node is a 'hotspot', i.e. something interesting (e.g.
+	      // node contains a game-deciding move).
+	      // SGF viewers should display a message.
+	      // The property is not related to any specific place
+	      // on the board, but marks the whole node instead.
+	      // Sophisticated applications could implement the navigation
+	      // command next/previous hotspot.
+	    },
+	    'N': function() {
+	      // Provides a name for the node
+	    },
+	    'UC': function() {
+	      // TODO: examples
+	      // The position is unclear
+	    },
+	    'V': function() {
+	      // Define a value for the node.  Positive values are good for
+	      // black, negative values are good for white.
+	      // The interpretation of particular values is game-specific.
+	      // In Go, this is the estimated score.
+	    },
+
+	    // Move Annotation Properties
+	    'BM': function() {
+	      // The played move is bade. Viewers should display a message.
+	    },
+	    'DO': function() {
+	      // The played move is doubtful.
+	    },
+	    'IT': function() {
+	      // The played move is interesting.
+	    },
+	    'TE': function() {
+	      // The played move is a tesuji (good move).
+	    },
+	    
+	    // Markup Properties
+	    'AR': function() {
+	      // draw an arrow pointing FROM the first point
+	      // TO the second point.
+	      // It's illegal to specify the same arrow twice,
+	      // e.g. (Go) AR[aa:bb][aa:bb]. Different arrows may have the same
+	      // starting or ending point though.
+	      // It's illegal to specify a one point arrow, e.g. AR[cc:cc]
+	      // as it's impossible to tell into which direction the
+	      // arrow points.
+	    },
+	    'CR': function() {
+	      // Marks the given points with a circle.
+	    },
+	    'DD': function() {
+	      // Dim (grey out) the given points.
+	      // http://www.red-bean.com/sgf/DD_VW.html
+	    },
+	    'LB': function() {
+	      // Writes the given text on the board
+	    },
+	    'LN': function() {
+	      // Applications should draw a simple line from one point 
+	      // to the other.
+	    },
+	    'MA': function() {
+	      // Marks the given points with an 'X'
+	    },
+	    'SL': function() {
+	      // Selected points.
+	    },
+	    'SQ': function() {
+	      // Marks the given points with a square.
+	    },
+	    'TR': function() {
+	      // Marks the given points with a triangle.
+	    },
+
+	    // Root Properties
+	    'AP': function() {
+	      // Provides the name and version number of the application used
+	      // to create this gametree.
+	    },
+	    'CA': function() {
+	      // Provides the used charset for SimpleText and Text type.
+	      // Default value is 'ISO-8859-1' aka 'Latin1'.
+	    },
+	    'FF': function() {
+	      
+	    },
+	    'GM': function() {
+	      // Defines the type of game, Go = 1
+	    },
+	    'ST': function() {
+	      // Defines how variations should be shown
+	    },
+	    'SZ': function() {
+	      // Size of the board
+	    },
+
+	    // Game Info Properties
+	    'AN': function() {
+	      // Provides the name of the person, who made the annotations
+	      // to the game.
+	    },
+	    'BR': function() {
+	      
+	    },
+	    'BT': function() {
+	      // Provides the name of the black team, if game was part of a
+	      // team-match
+	    },
+	    'CP': function() {
+	      // copyright information
+	    },
+	    'DT': function() {
+	      
+	    },
+	    'EV': function() {
+	      
+	    },
+	    'GN': function() {
+	      // Provides a name for the game. The name is used to
+	      // easily find games within a collection.
+	    },
+	    'GC': function() {
+	      // Provides some extra information about the following game.
+	      // The intend of GC is to provide some background information
+	      // and/or to summarize the game itself.
+	    },
+	    'ON': function() {
+	      // Provides some information about the opening played
+	      // (e.g. san-ren-sei, Chinese fuseki, etc.).
+	    },
+	    'OT': function() {
+	      // Describes the method used for overtime (byo-yomi)
+	    },
+	    'PB': function() {
+	      
+	    },
+	    'PC': function() {
+	      // Provides the place where the games was played.
+	    },
+	    'PW': function() {
+	      
+	    },
+	    'RE': function() {
+	      
+	    },
+	    'RO': function() {
+	      // Provides round-number and type of round. It should be
+	      // written in the following way: RO[xx (tt)], where xx is the
+	      // number of the round and (tt) the type:
+	      // final, playoff, league, ...
+	    },
+	    'RU': function() {
+
+	    },
+	    'SO': function() {
+	      // Provides the name of the source (e.g. book, journal, ...).
+	    },
+	    'TM': function() {
+	      // Provides the time limits of the game.
+	      // The time limit is given in seconds.
+	    },
+	    'WR': function() {
+	      
+	    },
+	    'WT': function() {
+	      
+	    },
+
+	    // Timing Properties (Do I need it?)
+	    'BL': function() {
+	      
+	    },
+	    'OB': function() {
+	      
+	    },
+	    'OW': function() {
+	      
+	    },
+	    'WL': function() {
+	      
+	    },
+
+	    // Miscellaneous Properties
+	    'FG': function() {
+	      
+	    },
+	    'PM': function() {
+	      
+	    },
+	    'VW': function() {
+	      
+	    }
+	  };
+
+      board_size = tree.root.getProperty('SZ');
+      if ( board_size === null ) {
+	board_size = 19;
+      }
+
+      this.handicap = tree.root.getProperty('HA');
+      if (this.handicap > 1) {
+	next = 'w';
+      }
+      if (this.handicap > board_size*board_size - 1 
+	  || this.handicap < 0) {
+	throw("Handicap HA[" + this.handicap + "] is unreasonable.");
+      }
+
+      this.komi = tree.root.getProperty('KM');
+      if (this.komi === null) {
+	if (this.handicap === 0) {
+	  this.komi = 5.5;
+	} else {
+	  this.komi = 0.5;
+	}
+      }
+
+      // Now, follow the '_child' property of the root
+      // and make actions
+      var props,
+          i,
+          action,
+          p,
+          len;
+      for (tree.lastnode=null; tree.forward();) {
+	props = tree.lastnode._property;
+	len = props.length;
+	for (i=0;i<len;i++) {
+	  p = props[i];
+
+	  action = action_table[p.name];
+	  if (typeof action === 'function') {
+	    action();
+	  } 
+	}
+      }
+
+      this.to_move = next;
+      return next;
+    }
+
+  });
+
+  /* ----------------------------------------------------------------
+   * @group interface
+   * ---------------------------------------------------------------- */
+
 
 }());

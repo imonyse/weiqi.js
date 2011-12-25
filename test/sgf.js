@@ -117,18 +117,30 @@ test('sequence', function(){
 
 test('gametree', function(){
   var p = new WeiQi.SGFParser(sgf_sample_1),
-      tree;
+      root;
 
-  tree = p.gametree(null, 's');
-  equal(tree._child._property.length, 17);
-  equal(tree._child._next, null);
+  root = p.gametree(null, 's');
+  equal(root._property.length, 17);
+  equal(root._next, null);
 
   p = new WeiQi.SGFParser(window.ff4_ex);
-  tree = p.gametree(null, 'l');
+  root = p.gametree(null, 'l');
 
   p = new WeiQi.SGFParser(window.print1);
-  tree = p.gametree(null, 'l');
+  root = p.gametree(null, 'l');
 
   p = new WeiQi.SGFParser(window.print2);
-  tree = p.gametree(null, 'l');
+  root = p.gametree(null, 'l');
+});
+
+
+module('SGFNode');
+
+test('getProperty', function(){
+  var p = new WeiQi.SGFParser(sgf_sample_1),
+      tree = {root:null, lastnode:null};
+
+  tree.root = p.gametree(null, 's');
+  equal(tree.root.getProperty('SZ')[0], 19);
+  equal(tree.root.getProperty('PB')[0], "Takemiya Masaki");
 });
