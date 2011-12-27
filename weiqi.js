@@ -899,6 +899,7 @@
         el, sgf, parser, player;
     
     this.settings = _.defaults(options, Defaults);
+    this.color_in_turn = this.settings.next_player;
     this.player = new Player();
 
     this.sgftree = {root:null, lastnode:null};
@@ -988,7 +989,7 @@
       len = this.board_len;
       this.board = paper.rect(margin, margin, len, len).attr({stroke:stroke_color, fill:fill_color, opacity:0.3});
 
-      //  and stones are drawing here
+      // stones are drawing here
       _.each(this.dots, function(dot){
 	dot.render(paper);
       });
@@ -997,11 +998,12 @@
 
     bind: function() {
       // bind click events
-      var board = this,
-          svg_dom;
+      var self = this;
+      
       this.board.click(function(e){
 	var posx = 0,
-            posy = 0;
+            posy = 0,
+            dot, svg_dom;
 
 	if (e.pageX || e.pageY) {
 	  posx = e.pageX;
@@ -1015,13 +1017,45 @@
 	posx -= svg_dom.offsetLeft;
 	posy -= svg_dom.offsetTop;
 
-	alert(posx + " " + posy);
+	// find the nearest dot according to cursor coordinates
+	dot = self.find_by_coordinates(posx, posy);
+	dot.owner = self.color_in_turn;
+	dot.render(self.paper);
+	
+	if (dot.owner === 'b') {
+	  self.color_in_turn = 'w';
+	} else {
+	  self.color_in_turn = 'b';
+	}
       });
     },
 
     // play sgf if given
     play: function() {
       
+    },
+
+    // return dot or the nearest dot object according to x, y 
+    find_by_coordinates: function(x, y) {
+      var i, len, delta, dot, result,
+          min = null;
+
+      len = this.dots.length;
+      for (i=0; i<len; i++) {
+	dot = this.dots[i];
+	delta = Math.sqrt((dot.x - x)*(dot.x - x) + (dot.y - y)*(dot.y - y));
+	if (!min) {
+	  min = delta;
+	  result = dot;
+	} else {
+	  if (delta < min) {
+	    min = delta;
+	    result = dot;
+	  }
+	}
+      }
+
+      return result;
     },
 
     find_by_name: function(name) {
