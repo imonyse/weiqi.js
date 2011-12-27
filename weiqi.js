@@ -1,31 +1,30 @@
 // WeiQi.js 0.1.1
 // (c) 2011 Huang Wei, imonyse@gmail.com
 
-// Minimum requirements: underscore.js, raphael.js 
+// require: underscore.js, raphael.js 
 
 (function() {
-  var root = this;
+  var root = this,
+      _ = root._,
+      Raphael = root.Raphael,
+      WeiQi;
   
-  // require underscore, a very userful library offers high order functions
-  var _ = root._;
   if (!_ && (typeof require !== 'undefined')) {
     _ = require('underscore')._;
   }
   
+  if (!Raphael && (typeof require !== 'undefined')) {
+    Raphael = require('Raphael').Raphael;
+  }
+  
   // The top-level namespace. All public WeiQi classes and modules will be
   // attached to this.
-  var WeiQi;
-
   WeiQi = root.WeiQi = {};
 
   /* ----------------------------------------------------------------
    * @group SGFNode, SGFProperty
    * ---------------------------------------------------------------- */
-
-  // A property of an SGF node. An SGF node is described by an Array of these
   var SGFProperty;
-  var SGFNode;
-
   SGFProperty = function(name, value){
     this.name = name || null;
     if (typeof value !== 'undefined' && value !== null) {
@@ -49,6 +48,7 @@
     }
   });
 
+  var SGFNode;
   SGFNode = function(property){
     this._property = property || new SGFProperty();
     this._parent = null;
@@ -291,7 +291,7 @@
   /* ----------------------------------------------------------------
    * @group SGFParser
    * ---------------------------------------------------------------- */
-  WeiQi.SGFParser = function(sgf_text) {
+  SGFParser = function(sgf_text) {
     this.sgf_text = sgf_text;
     this.lookahead = this.sgf_text;
     this.non_whitespace = /\S/;
@@ -299,7 +299,7 @@
     this.LAX_SGF = 'l';
   };
   
-  _.extend(WeiQi.SGFParser.prototype, {
+  _.extend(SGFParser.prototype, {
     step_next: function(i) {
       if (typeof i === 'undefined') {
 	i = 0;
@@ -513,17 +513,18 @@
     }
   });
 
+
   /* ----------------------------------------------------------------
    * @group GameInfo
    * ---------------------------------------------------------------- */
-  GameInfo = function() {
+  Player = function() {
     this.handicap = 0;
     this.komi = 5.5;
     this.to_move = 1;
     this.game_record = null;
   };
 
-  _.extend(GameInfo.prototype, {
+  _.extend(Player.prototype, {
     playSgftree: function(tree) {
       // SGF Reference: http://www.red-bean.com/sgf/properties.html
       var board_size,
@@ -838,8 +839,212 @@
   });
 
   /* ----------------------------------------------------------------
+   * @group Default Settings
+   * ---------------------------------------------------------------- */
+  var Defaults;
+  Defaults = {
+    height: 450,
+    width: 450,
+    board_size: 19,
+    komi: 5.5,
+    Handicap: 0,
+    next_player: 'b'
+  };
+
+  /* ----------------------------------------------------------------
+   * @group Go Board
+   * ---------------------------------------------------------------- */
+  var Stars;
+  Stars = ["dd", "dj", "dp","jd", "jj", "jp", "pd", "pj", "pp"];
+
+  var Dot;
+  Dot = function(name, x, y, radius) {
+    this.name = name;
+    this.x = x;
+    this.y = y;
+    this.owner = 'e';
+    this.radius = radius;
+    this.stone = null;
+  };
+
+  _.extend(Dot.prototype, {
+    is_star: function() {
+      var i = _.indexOf(Stars, this.name);
+      if (i !== -1) {
+	return true;
+      } else {
+	return false;
+      }
+    },
+
+    render: function(painter) {
+      var stone,
+          self = this;
+      
+      if (self.owner === 'b') {
+	stone = self.stone = painter.circle(self.x, self.y, self.radius);
+	stone.attr({fill:"#000", stroke:"#000"});
+      } else if (self.owner === 'w') {
+	stone = self.stone = painter.circle(self.x, self.y, self.radius);
+	stone.attr({fill:"#fff", stroke:"#000"});
+      }
+      
+    }
+  });
+
+  var Board;
+  Board = function(dom_id, settings) {
+    var i, j, len, alphabet, dot,
+        options = settings || {},
+        el, sgf, parser, player;
+    
+    this.settings = _.defaults(options, Defaults);
+    this.player = new Player();
+
+    this.sgftree = {root:null, lastnode:null};
+    if (typeof dom_id === 'undefined' || dom_id === null){
+      this.paper = null;
+      this.dom_id = null;
+    } else {
+      this.paper = Raphael(dom_id, this.settings.height, this.settings.width);
+      this.dom_id = dom_id;
+
+      // parse sgf here
+      el = document.getElementById(dom_id);
+      if (typeof el.dataset !== 'undefined') {
+	sgf = el.dataset.sgf || "";
+      } else {
+	sgf = el.getAttribute('data-sgf');
+      }
+
+      parser = new SGFParser(sgf);
+      this.sgftree = parser.gametree();
+    }
+    
+    this.dots = [];
+    this.margin = this.settings.height * 0.1;
+    this.board_len = this.settings.height * 0.8;
+    // rect for go board need extra margin for better UE
+    this.dot_len = this.board_len / (this.settings.board_size + 1);
+    this.star_radius = this.dot_len * 0.2;
+    this.stone_radius = this.dot_len / 2 - 1;
+
+    alphabet = "abcdefghijklmnopqrs".slice(0, this.settings.board_size);
+    len = alphabet.length;
+    for (i=0; i<len; i++) {
+      for (j=0; j<len; j++) {
+	dot = new Dot(alphabet.charAt(i)+alphabet.charAt(j), 
+		      this.margin+this.dot_len*(i+1), 
+		      this.margin+this.dot_len*(j+1), 
+		      this.stone_radius);
+	this.dots[this.dots.length] = dot;
+      }
+    }
+  };
+
+  _.extend(Board.prototype, {
+    render: function() {
+      // draw the Go board
+      var margin = this.margin,
+          len = this.board_len,
+          m = this.dot_len,
+          k = this.settings.board_size,
+          i,j,
+          stroke_color = "#000",
+          fill_color = "#eee",
+          path = [],
+          pathstr,
+          paper = this.paper,
+          star_radius = this.star_radius;
+
+      paper.clear();
+
+      margin += m;
+      len = len - m*2;
+      for (i=0; i<k; i++) {
+	j = margin + m*i;
+	// horizontal lines path
+	path[path.length] = "M" + margin + " " + j + "L" + (margin + len) + " " + j;
+      }
+
+      for (i=0; i<k; i++) {
+	// vertical lines path
+	j = margin + m*i;
+	path[path.length] = "M" + j + " " + margin + "L" + j + " " + (margin + len);
+      }
+
+      pathstr = path.join("");
+      paper.path(pathstr).attr({stroke:stroke_color});
+
+      // star positions (星位)
+      _.each(this.dots, function(dot){
+	if (dot.is_star()) {
+	  paper.circle(dot.x, dot.y, star_radius).attr({fill:"#000"});
+	}
+      });
+
+      // The drawing order will make sure rect respond to click event right
+      margin = this.margin;
+      len = this.board_len;
+      this.board = paper.rect(margin, margin, len, len).attr({stroke:stroke_color, fill:fill_color, opacity:0.3});
+
+      //  and stones are drawing here
+      _.each(this.dots, function(dot){
+	dot.render(paper);
+      });
+
+    },
+
+    bind: function() {
+      // bind click events
+      var board = this,
+          svg_dom;
+      this.board.click(function(e){
+	var posx = 0,
+            posy = 0;
+
+	if (e.pageX || e.pageY) {
+	  posx = e.pageX;
+	  posy = e.pageY;
+	} else if (e.clientX || e.clientY) {
+	  posx = e.clientX + document.body.scrollLeft + document.documentElement.scrollLeft;
+	  posy = e.clientY + document.body.scrollTop + document.documentElement.scrollTop;
+	}
+
+	svg_dom = document.getElementById(board.dom_id);
+	posx -= svg_dom.offsetLeft;
+	posy -= svg_dom.offsetTop;
+
+	alert(posx + " " + posy);
+      });
+    },
+
+    // play sgf if given
+    play: function() {
+      
+    },
+
+    find_by_name: function(name) {
+      var i,
+          len,
+          dot;
+
+      len = this.dots.length;
+      for (i=0; i<len; i++) {
+	dot = this.dots[i];
+	if (dot.name === name) {
+	  return dot;
+	}
+      }
+
+      return null;
+    }
+  });
+
+  /* ----------------------------------------------------------------
    * @group interface
    * ---------------------------------------------------------------- */
-
+  WeiQi.SGFParser = SGFParser;
+  WeiQi.Board = Board;
 
 }());

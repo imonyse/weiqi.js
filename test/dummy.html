@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <script type="text/javascript" src="../vendor/underscore.js"></script>
+    <script type="text/javascript" src="../vendor/raphael.js"></script>
+    <script type="text/javascript" src="../weiqi.js"></script>
+  </head>
+
+  <body>
+    <script type="text/javascript">
+      var el,
+          board,
+          dot;
+
+      el = document.createElement('div');
+      el.setAttribute('id', "testing");
+      el.setAttribute('data-sgf', "(;FF[4]GM[1]SZ[19]FG[257:Figure 1]PM[1]PB[Takemiya Masaki]BR[9 dan]PW[Cho Chikun]WR[9 dan]RE[W+Resign]KM[5.5]TM[28800]DT[1996-10-18,19]EV[21st Meijin]RO[2 (final)]SO[Go World #78]US[Arno Hollosi];B[pd];W[dp])");
+      document.body.appendChild(el);
+    
+      board = new WeiQi.Board("testing");
+      board.render();
+
+      board.find_by_name('pd').owner = 'b';
+      board.find_by_name('dd').owner = 'w';
+      board.find_by_name('dp').owner = 'b';
+      board.find_by_name('pp').owner = 'w';
+      board.find_by_name('pq').owner = 'b';
+      board.render();
+      board.bind();
+    </script>
+  </body>
+</html>

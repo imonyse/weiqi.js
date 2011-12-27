@@ -144,3 +144,4 @@ test('getProperty', function(){
   equal(tree.root.getProperty('SZ')[0], 19);
   equal(tree.root.getProperty('PB')[0], "Takemiya Masaki");
 });
+
