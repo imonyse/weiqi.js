@@ -999,7 +999,7 @@
     bind: function() {
       // bind click events
       var self = this;
-      
+
       this.board.click(function(e){
 	var posx = 0,
             posy = 0,
@@ -1017,8 +1017,20 @@
 	posx -= svg_dom.offsetLeft;
 	posy -= svg_dom.offsetTop;
 
+	// For IE6, 7, etc
+	var ie_parent = svg_dom.offsetParent;
+	if (typeof ie_parent !== 'undefined') {
+	  for (;ie_parent;ie_parent = ie_parent.offsetParent) {
+	    posx -= ie_parent.offsetLeft;
+	    posy -= ie_parent.offsetTop;
+	  }
+	}
+
 	// find the nearest dot according to cursor coordinates
 	dot = self.find_by_coordinates(posx, posy);
+
+	// TODO: draw fake stone or not depending on settings
+
 	dot.owner = self.color_in_turn;
 	dot.render(self.paper);
 	
