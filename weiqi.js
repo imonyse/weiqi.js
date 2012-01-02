@@ -22,6 +22,30 @@
   WeiQi = root.WeiQi = {};
 
   /* ----------------------------------------------------------------
+   * @group helpers
+   * ---------------------------------------------------------------- */
+  function assert_board(pos, color) {
+    var on_board_pos;
+    
+    if (color !== 'b' && color !== 'w') {
+      throw('assert_board: unknown color ' + color);
+    }
+
+    if (pos.charAt(0) > this.max_pos
+	|| pos.charAt(1) > this.max_pos) {
+      throw('assert_board: illegal move ' + pos);
+    }
+
+    on_board_pos = this.moves[pos];
+    if (typeof on_board_pos !== 'undefined') {
+      throw('assert_board: ' + pos + ' already has a stone');
+    }
+
+    return null;
+  }
+
+
+  /* ----------------------------------------------------------------
    * @group SGFNode, SGFProperty
    * ---------------------------------------------------------------- */
   var SGFProperty;
@@ -848,7 +872,8 @@
     board_size: 19,
     komi: 5.5,
     Handicap: 0,
-    next_player: 'b'
+    next_player: 'b',
+    confirm: false
   };
 
   /* ----------------------------------------------------------------
@@ -857,6 +882,35 @@
   var Stars;
   Stars = ["dd", "dj", "dp","jd", "jj", "jp", "pd", "pj", "pp"];
 
+  var Dragon;
+  // Dragon has very tight coupling with Dot
+  // But I don't think this is a problem, though
+  Dragon = function(dot, alphabet) {
+    var i, j, name,
+        end = alphabet.charAt(alphabet.length - 1);
+        full = 4;
+    
+    name = dot.name;
+    i = name.charAt(0);
+    j = name.charAt(1);
+    // initial liberties depending on dot's position
+    if (i === 'a' || i === end) { full--; }
+    if (j === 'a' || j === end) { full--; }
+    this.liberties = full;
+    
+    this.color = dot.color;
+    // all stones in this dragon
+    this.stones = [dot];
+    this.neighbors = 0;
+    this.mark = 0;
+  };
+
+  _.extend(Dragon.prototype, {
+    remove_liberty: function(name) {
+      
+    }
+  });
+
   var Dot;
   Dot = function(name, x, y, radius) {
     this.name = name;
@@ -864,7 +918,8 @@
     this.y = y;
     this.owner = 'e';
     this.radius = radius;
-    this.stone = null;
+    // which dragon it belongs to
+    this.dragon = null;
   };
 
   _.extend(Dot.prototype, {
@@ -877,16 +932,44 @@
       }
     },
 
-    render: function(painter) {
+    new_dragon: function(alphabet) {
+      this.dragon = new Dragon(this, alphabet);
+    },
+
+    extend_neighbor_dragon: function() {
+      
+    },
+
+    assimilate_neighbor_dragon: function() {
+      
+    },
+
+    render: function(painter, flag) {
       var stone,
           self = this;
+
+      if (typeof flag === 'undefined') {
+	flag = true;
+      }
       
-      if (self.owner === 'b') {
-	stone = self.stone = painter.circle(self.x, self.y, self.radius);
-	stone.attr({fill:"#000", stroke:"#000"});
-      } else if (self.owner === 'w') {
-	stone = self.stone = painter.circle(self.x, self.y, self.radius);
-	stone.attr({fill:"#fff", stroke:"#000"});
+      if (flag === true) {
+	// real stone
+	if (self.owner === 'b') {
+	  stone = painter.circle(self.x, self.y, self.radius);
+	  stone.attr({fill:"#000", stroke:"#000"});
+	} else if (self.owner === 'w') {
+	  stone = painter.circle(self.x, self.y, self.radius);
+	  stone.attr({fill:"#fff", stroke:"#000"});
+	}
+      } else {
+	// fake stone
+	if (self.owner === 'b') {
+	  stone = painter.circle(self.x, self.y, self.radius);
+	  stone.attr({fill:"#000", stroke:"#000", opacity: 0.4});
+	} else if (self.owner === 'w') {
+	  stone = painter.circle(self.x, self.y, self.radius);
+	  stone.attr({fill:"#fff", stroke:"#000", opacity: 0.4});
+	}
       }
       
     }
@@ -922,16 +1005,24 @@
       this.sgftree = parser.gametree();
     }
     
-    this.dots = [];
-    this.margin = this.settings.height * 0.1;
+    // white or black stone positions on the board
+    // eg: {'dd':'b', 'qd':'w'}
+    this.moves = {};		
+    
+    // This 0.5 tricky is the same as HTML5 canvas 
+    // (see http://diveintohtml5.info/canvas.html)
+    this.margin = this.settings.height * 0.1 - 0.5;
     this.board_len = this.settings.height * 0.8;
     // rect for go board need extra margin for better UE
     this.dot_len = this.board_len / (this.settings.board_size + 1);
-    this.star_radius = this.dot_len * 0.2;
+    this.star_radius = this.dot_len * 0.15;
     this.stone_radius = this.dot_len / 2 - 1;
 
-    alphabet = "abcdefghijklmnopqrs".slice(0, this.settings.board_size);
+    // all dots on the board
+    this.dots = [];
+    alphabet = this.alphabet = "abcdefghijklmnopqrs".slice(0, this.settings.board_size);
     len = alphabet.length;
+    this.max_pos = alphabet.charAt(len-1);
     for (i=0; i<len; i++) {
       for (j=0; j<len; j++) {
 	dot = new Dot(alphabet.charAt(i)+alphabet.charAt(j), 
@@ -941,6 +1032,9 @@
 	this.dots[this.dots.length] = dot;
       }
     }
+
+    // all dragons on the board
+    this.dragons = {};
   };
 
   _.extend(Board.prototype, {
@@ -1029,22 +1123,223 @@
 	// find the nearest dot according to cursor coordinates
 	dot = self.find_by_coordinates(posx, posy);
 
-	// TODO: draw fake stone or not depending on settings
-
-	dot.owner = self.color_in_turn;
-	dot.render(self.paper);
-	
-	if (dot.owner === 'b') {
-	  self.color_in_turn = 'w';
+	// draw fake stone or not, depending on settings
+	if (self.settings.confirm === false) {
+	  dot.owner = self.color_in_turn;
+	  dot.render(self.paper);
+	  
+	  if (dot.owner === 'b') {
+	    self.color_in_turn = 'w';
+	  } else {
+	    self.color_in_turn = 'b';
+	  }
 	} else {
-	  self.color_in_turn = 'b';
+	  dot.render(self.paper, false);
+	  window.pendding_move = function() {
+	    // real move here
+	  };
 	}
+	
       });
     },
 
-    // play sgf if given
-    play: function() {
+    // get the dot siblings
+    north: function(name) {
+      var i = this.alphabet.indexOf(name.charAt(0)),
+          j = this.alphabet.indexOf(name.charAt(1)),
+          nj;
       
+      nj = j - 1;
+      return this.find_by_name(name.charAt(0) + this.alphabet.charAt(nj));
+    },
+
+    south: function(name) {
+      var i = this.alphabet.indexOf(name.charAt(0)),
+          j = this.alphabet.indexOf(name.charAt(1)),
+          sj;
+      
+      sj = j + 1;
+      return this.find_by_name(name.charAt(0) + this.alphabet.charAt(sj));
+    },
+
+    west: function(name) {
+      var i = this.alphabet.indexOf(name.charAt(0)),
+          j = this.alphabet.indexOf(name.charAt(1)),
+          wi;
+
+      wi = i - 1;
+      return this.find_by_name(this.alphabet.charAt(wi) + name.charAt(1));
+    },
+
+    east: function(name) {
+      var i = this.alphabet.indexOf(name.charAt(0)),
+          j = this.alphabet.indexOf(name.charAt(1)),
+          ei;
+
+      ei = i + 1;
+      return this.find_by_name(this.alphabet.charAt(ei) + name.charAt(1));
+    },
+
+    // Algorightm:
+    // 1. Place a stone of given color on the board.
+    // 2. If there are any adjacent opponent dragons without liberties,
+    // remove them and increase the prisoner count. 
+    // 3. If the newly placed stone is part of a dragon without liberties,
+    // remove it and increase the prisoner count.
+    do_play_move: function(pos, color) {
+      var other = color === 'b' ? 'w' : 'b',
+          captured_stones = 0,
+          neighbor_allies = 0,
+          north, south, west, east,
+          dot;
+
+      assert_board(pos, color);
+
+      this.add_stone(pos, color);
+
+      // Count the number of neighbor dragons of the same color
+      // Remove captured dragons and remove pos as liberty for opponent dragon
+      // that are not captured
+      north = this.north(pos);
+      if (this.moves[north.name] === color) {
+	neighbor_allies++;
+	north.dragon.mark = 1;
+      } else if (this.moves[north.name] === other) {
+	if (this.liberties(north) > 1) {
+	  north.dragon.remove_liberty(pos);
+	  north.dragon.mark = 1;
+	} else {
+	  captured_stones += north.dragon.do_remove();
+	}
+      }
+
+      south = this.south(pos);
+      if (south.dragon.mark === 0) {
+	// dot haven't been visited yet
+	if (south.owner === color) {
+	  neighbor_allies++;
+	  south.dragon.mark = 1;
+	} else if (south.owner === other) {
+	  if (this.liberties(south) > 1) {
+	    south.dragon.remove_liberty(pos);
+	    south.dragon.mark = 1;
+	  } else {
+	    captured_stones += south.dragon.do_remove();
+	  }
+	}
+      }
+
+      west = this.west(pos);
+      if (west.dragon.mark === 0) {
+	if (west.owner === color) {
+	  neighbor_allies++;
+	  west.dragon.mark = 1;
+	} else if (west.owner === other) {
+	  if (this.liberties(west) > 1) {
+	    west.dragon.remove_liberty(pos);
+	    west.dragon.mark = 1;
+	  } else {
+	    captured_stones += west.dragon.do_remove();
+	  }
+	}
+      }
+
+      east = this.east(pos);
+      if (east.mark === 0) {
+	if (east.owner === color) {
+	  neighbor_allies++;
+	  east.dragon.mark = 1;
+	} else if (east.owner === other) {
+	  if (this.liberties(east) > 1) {
+	    east.dragon.remove_liberty(pos);
+	    east.dragon.mark = 1;
+	  } else {
+	    captured_stones += east.dragon.do_remove();
+	  }
+	}
+      }
+
+      dot = this.find_by_name(pos);
+      if (neighbor_allies === 0) {
+	// create new dragon
+	// TODO: we'd better store 4 direction dot to avoid repeat finding
+	this.make_dragon(dot);
+      } else if (neighbor_allies === 1) {
+	// TODO: implement
+	dot.extend_neighbor_dragon();
+      } else {
+	dot.assimilate_neighbor_dragon();
+      }
+
+      // ko
+
+      
+    },
+
+    make_dragon: function(dot) {
+      dot.new_dragon(this.alphabet);
+    },
+
+    add_stone: function(pos, color) {
+      var dot = this.find_by_name(pos);
+
+      dot.owner = color;
+      this.moves[pos] = color;
+    },
+
+    // Return true if
+    // 1. There is no neighboring empty intersection
+    // 2. There is no neighboring opponent dragon with exactly one liberty
+    // 3. There is no neighboring friendly dragon with more than one liberty
+    is_suicide: function(pos, color) {
+      var north = this.north(pos), 
+          south = this.south(pos), 
+          west  = this.west(pos), 
+          east  = this.east(pos);
+
+      if (north !== null) {
+	if ((north.owner === 'e')
+	    || ((north.color === color) !== (this.liberties(north) === 1))) {
+	  return false;
+	} 
+      }
+
+      if (south !== null) {
+	if ((south.owner === 'e')
+	    || ((sourth.color === color) !== (this.liberties(south) === 1))) {
+	  return false;
+	} 
+      }
+
+      if (west !== null) {
+	if ((west.owner === 'e')
+	    || ((west.color === color) !== (this.liberties(west) === 1))) {
+	  return false;
+	} 
+      }
+
+      if (east !== null) {
+	if ((east.owner === 'e')
+	    || ((east.color === color) !== (this.liberties(east) === 1))) {
+	  return false;
+	} 
+      }
+
+      return true;
+    },
+
+    is_legal: function(color, pos) {
+      // mainly for ko position
+    },
+
+    liberties: function(dot) {
+      // unsafe function, caller must make sure dot has an owner 
+      var dragon = dot.dragon;
+      return dragon.liberties;
+    },
+
+    new_position: function() {
+      // no allies nearby, create a new dragon
     },
 
     // return dot or the nearest dot object according to x, y 
@@ -1092,5 +1387,6 @@
    * ---------------------------------------------------------------- */
   WeiQi.SGFParser = SGFParser;
   WeiQi.Board = Board;
-
+  WeiQi.Dot = Dot;
+  WeiQi.Dragon = Dragon;
 }());
