@@ -47,11 +47,11 @@ test('nexttoken from custom string', function() {
   equal(p.lookahead, null);
 });
 
-test('step_next', function(){
+test('stepNext', function(){
   var p = new WeiQi.SGFParser(sgf_sample_1);
   p.lookahead = "12345";
 
-  p.step_next();
+  p.stepNext();
   equal(p.lookahead, "2345");
 });
 

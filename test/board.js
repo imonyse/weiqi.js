@@ -1,10 +1,10 @@
 module('Board');
 
-test('find_by_name', function() {
+test('findByName', function() {
   var b = new WeiQi.Board(),
       dot;
   
-  dot = b.find_by_name('pd');
+  dot = b.findByName('pd');
   equal(dot.name, 'pd');
 });
 
@@ -58,19 +58,20 @@ test('initial liberties', function() {
   var alphabet = "abcdefghijklmnopqrs",
       dot, dragon;
 
-  dot = new WeiQi.Dot('aa', 0, 0, 5);
+  dot = new WeiQi.Dot('aa', 0, 0, 5, null);
   dragon = new WeiQi.Dragon(dot, alphabet);
   equal(dragon.liberties, 2);
 
-  dot = new WeiQi.Dot('ss', 0, 0, 0);
+  dot = new WeiQi.Dot('ss', 0, 0, 0, null);
   dragon = new WeiQi.Dragon(dot, alphabet);
   equal(dragon.liberties, 2);
 
-  dot = new WeiQi.Dot('ap', 0, 0, 0);
+  dot = new WeiQi.Dot('ap', 0, 0, 0, null);
   dragon = new WeiQi.Dragon(dot, alphabet);
   equal(dragon.liberties, 3);
 
-  dot = new WeiQi.Dot('pd', 0, 0, 0);
+  dot = new WeiQi.Dot('pd', 0, 0, 0, null);
   dragon = new WeiQi.Dragon(dot, alphabet);
   equal(dragon.liberties, 4);
 });
+
